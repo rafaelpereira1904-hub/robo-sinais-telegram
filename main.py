@@ -4,12 +4,10 @@ import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import requests
 
-# Configurações do Telegram
 TOKEN = "6922393084:AAELCwWX_RXH5Ba6_VuUWGgQAQscJPkFVbk"
 CHAT_ID = "-1002179849033"
 URL = f"https://api.telegram.org/bot{TOKEN}"
 
-# 1. Servidor web falso para o Railway manter o serviço ativo
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -21,10 +19,8 @@ def run_server():
     server = HTTPServer(("0.0.0.0", port), SimpleHandler)
     server.serve_forever()
 
-# Iniciar o servidor web numa thread separada
 threading.Thread(target=run_server, daemon=True).start()
 
-# 2. Funções do Robô de Sinais
 def enviar_mensagem(texto):
     url = f"{URL}/sendMessage"
     payload = {
@@ -52,7 +48,6 @@ def verificar_comandos():
                         texto_msg = update["message"]["text"]
                         chat_id_origem = update["message"]["chat"]["id"]
                         
-                        # Resposta ao comando /sinal
                         if texto_msg.startswith("/sinal"):
                             sinal_exemplo = (
                                 "🚨 *SINAL MANUAL SOLICITADO* 🚨\n\n"
@@ -71,14 +66,11 @@ def verificar_comandos():
         
         time.sleep(2)
 
-# Iniciar o ouvinte de comandos numa thread separada
 threading.Thread(target=verificar_comandos, daemon=True).start()
 
 print("Robô iniciado com sucesso na nuvem!")
 
-# 3. Loop principal para envio automático de sinais programados
 while True:
-    # Exemplo de envio automático a cada X horas ou minutos
     sinal_automatico = (
         "💎 *SINAL AUTOMÁTICO - VIP* 💎\n\n"
         "📊 **Par:** GBP/USD\n"
@@ -87,6 +79,4 @@ while True:
         "⏳ **Expiração:** 5 Minutos"
     )
     enviar_mensagem(sinal_automatico)
-    
-    # Aguarda 1 hora (3600 segundos) até ao próximo sinal automático
     time.sleep(3600)
