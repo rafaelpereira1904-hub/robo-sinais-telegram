@@ -1,110 +1,92 @@
-import datetime
-import random
+import os
 import time
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import requests
 
-TELEGRAM_TOKEN = "6922393084:AAELCwWX_RXH5Ba6_VuUWGgQAQscJPkFVbk"
+# Configurações do Telegram
+TOKEN = "6922393084:AAELCwWX_RXH5Ba6_VuUWGgQAQscJPkFVbk"
 CHAT_ID = "-1002179849033"
+URL = f"https://api.telegram.org/bot{TOKEN}"
 
+# 1. Servidor web falso para o Railway manter o serviço ativo
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running 24/7!")
 
-def enviar_telegram(mensagem, chat_id=CHAT_ID):
-  url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-  payload = {"chat_id": chat_id, "text": mensagem, "parse_mode": "Markdown"}
-  try:
-    requests.post(url, json=payload, timeout=10)
-  except Exception as e:
-    print(f"⚠️ Erro ao enviar mensagem: {e}")
+def run_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
+    server.serve_forever()
 
+# Iniciar o servidor web numa thread separada
+threading.Thread(target=run_server, daemon=True).start()
 
-def analisar_confluencia_smc(ativo):
-  wins = random.randint(17, 23)
-  losses = random.randint(1, 4)
-  total = wins + losses
-  win_rate = (wins / total) * 100
-  direcao = "CALL (BUY)" if random.choice([True, False]) else "PUT (SELL)"
-  padrao_identificado = random.choice([
-      "Fair Value Gap (FVG) + RSI Sobrevendido",
-      "Order Block de M5 + Retração de Fibonacci",
-      "Point of Control (POC) + Rompimento de Estrutura (BOS)",
-  ])
-  return {
-      "ativo": ativo,
-      "wins": wins,
-      "losses": losses,
-      "win_rate": win_rate,
-      "direcao": direcao,
-      "padrao": padrao_identificado,
-  }
+# 2. Funções do Robô de Sinais
+def enviar_mensagem(texto):
+    url = f"{URL}/sendMessage"
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": texto,
+        "parse_mode": "Markdown"
+    }
+    try:
+        response = requests.post(url, json=payload)
+        return response.json()
+    except Exception as e:
+        print(f"Erro ao enviar mensagem: {e}")
 
+def verificar_comandos():
+    offset = 0
+    while True:
+        try:
+            url = f"{URL}/getUpdates?offset={offset}&timeout=30"
+            response = requests.get(url).json()
+            
+            if "result" in response:
+                for update in response["result"]:
+                    offset = update["update_id"] + 1
+                    if "message" in update and "text" in update["message"]:
+                        texto_msg = update["message"]["text"]
+                        chat_id_origem = update["message"]["chat"]["id"]
+                        
+                        # Resposta ao comando /sinal
+                        if texto_msg.startswith("/sinal"):
+                            sinal_exemplo = (
+                                "🚨 *SINAL MANUAL SOLICITADO* 🚨\n\n"
+                                "📊 **Ativo:** EUR/USD (OTC)\n"
+                                "⏰ **Horário:** Próxima Vela\n"
+                                "📉 **Direção:** PUT (Venda)\n"
+                                "⏳ **Expiração:** 1 Minuto"
+                            )
+                            requests.post(f"{URL}/sendMessage", json={
+                                "chat_id": chat_id_origem,
+                                "text": sinal_exemplo,
+                                "parse_mode": "Markdown"
+                            })
+        except Exception as e:
+            print(f"Erro no listener de comandos: {e}")
+        
+        time.sleep(2)
 
-def gerar_relatorio_sinais():
-  ativos = ["EUR/USD", "GBP/USD", "USD/JPY", "EUR/USD-OTC", "AUD/CAD-OTC"]
-  sinais_qualificados = []
+# Iniciar o ouvinte de comandos numa thread separada
+threading.Thread(target=verificar_comandos, daemon=True).start()
 
-  for ativo in ativos:
-    analise = analisar_confluencia_smc(ativo)
-    if analise["win_rate"] >= 80.0:
-      sinais_qualificados.append(analise)
+print("Robô iniciado com sucesso na nuvem!")
 
-  if not sinais_qualificados:
-    return "⚠️ *Nenhum par atingiu a assertividade mínima de 80% neste ciclo.*"
-
-  data_hora = datetime.datetime.now().strftime("%d/%m/%Y às %H:%M")
-  mensagem = (
-      f"🤖 *IA ANALISADOR SMC & PRICE ACTION* 🤖\n"
-      f"🗓️ _{data_hora} | Timeframe: M1/M5_\n"
-      f"-----------------------------------------\n\n"
-  )
-
-  for s in sinais_qualificados:
-    emoji = "🟢" if "CALL" in s["direcao"] else "🔴"
-    mensagem += (
-        f"🌐 *Ativo:* `{s['ativo']}`\n"
-        f"🎯 *Assertividade:* `{s['win_rate']:.1f}%` "
-        f"({s['wins']}W / {s['losses']}L)\n"
-        f"⚙️ *Padrão:* _{s['padrao']}_\n"
-        f"{emoji} *Direção:* *{s['direcao']}*\n"
-        f"-----------------------------------------\n"
+# 3. Loop principal para envio automático de sinais programados
+while True:
+    # Exemplo de envio automático a cada X horas ou minutos
+    sinal_automatico = (
+        "💎 *SINAL AUTOMÁTICO - VIP* 💎\n\n"
+        "📊 **Par:** GBP/USD\n"
+        "⏰ **Horário:** 18:15\n"
+        "📈 **Direção:** CALL (Compra)\n"
+        "⏳ **Expiração:** 5 Minutos"
     )
-
-  mensagem += "\n🚀 *Monitore o gráfico para a retração na zona!*"
-  return mensagem
-
-
-def verificar_comandos_telegram(ultimo_offset):
-  url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?offset={ultimo_offset}&timeout=5"
-  try:
-    resposta = requests.get(url, timeout=10).json()
-    if "result" in resposta:
-      for update in resposta["result"]:
-        ultimo_offset = update["update_id"] + 1
-        if "message" in update and "text" in update["message"]:
-          texto = update["message"]["text"].strip().lower()
-          chat_id_usuario = update["message"]["chat"]["id"]
-          if "/sinal" in texto or "/catalogar" in texto:
-            resposta_ia = gerar_relatorio_sinais()
-            enviar_telegram(resposta_ia, chat_id=chat_id_usuario)
-  except Exception as e:
-    print(f"Erro ao checar comandos: {e}")
-  return ultimo_offset
-
-
-def rodar_sistema():
-  print("🚀 Bot Híbrido de Sinais iniciado com sucesso!")
-  ultimo_offset = 0
-  tempo_ultimo_envio = 0
-  INTERVALO_AUTOMATICO = 900  # 15 minutos
-
-  while True:
-    tempo_atual = time.time()
-    if tempo_atual - tempo_ultimo_envio >= INTERVALO_AUTOMATICO:
-      relatorio = gerar_relatorio_sinais()
-      enviar_telegram(relatorio)
-      tempo_ultimo_envio = tempo_atual
-
-    ultimo_offset = verificar_comandos_telegram(ultimo_offset)
-    time.sleep(2)
-
-
-if __name__ == "__main__":
-  rodar_sistema()
+    enviar_mensagem(sinal_automatico)
+    
+    # Aguarda 1 hora (3600 segundos) até ao próximo sinal automático
+    time.sleep(3600)
